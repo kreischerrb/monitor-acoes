@@ -14,7 +14,7 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 4. **Interface em português do Brasil**, com valores em R$ no formato brasileiro.
 5. **Funcionar sem token** com as 4 ações de teste da brapi (PETR4, VALE3, ITUB4, MGLU3) e mostrar uma mensagem clara quando algo depende do token.
 
-## Versão 1.0 (atual)
+## Versão 1.0.1 (atual)
 
 | Área | Comportamento |
 | --- | --- |
@@ -36,7 +36,9 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 - Cotação e histórico: `https://brapi.dev/api/quote/{TICKER}` com `range` e `interval=1d`.
 - Câmbio: `https://brapi.dev/api/v2/currency?currency=USD-BRL`.
 - Token enviado como parâmetro `token=` na consulta, só quando o usuário o cadastrou.
-- Uma consulta por ativo, compatível com o plano gratuito.
+- Sem token: as ações de teste vão juntas numa consulta só, e nada é consultado para índices, dólar ou outras ações.
+- Com token: uma consulta por ativo, compatível com o plano gratuito.
+- As consultas saem em fila, uma de cada vez. Se a brapi responder "limite de consultas", o app espera e tenta de novo até 2 vezes.
 
 ## Próximas evoluções
 
@@ -46,4 +48,5 @@ A primeira evolução será escolhida depois de usar a versão 1.0 e servirá de
 
 | Versão | Data | Mudança |
 | --- | --- | --- |
+| 1.0.1 | 01/11/2026 | Corrige "limite de consultas atingido": menos consultas sem token, fila entre consultas e nova tentativa automática |
 | 1.0 | 01/11/2026 | Primeira versão: mercado, detalhe com gráfico, carteira, alertas, ajustes e backup |
