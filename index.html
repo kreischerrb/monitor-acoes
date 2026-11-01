@@ -281,7 +281,7 @@
         <button class="btn danger" id="resetBtn">Apagar todos os dados deste aparelho</button>
       </div>
     </div>
-    <p class="foot">Monitor de Ações · v1.0 · seus dados ficam só neste aparelho</p>
+    <p class="foot">Monitor de Ações · v1.0.1 · seus dados ficam só neste aparelho</p>
   </section>
 </main>
 
@@ -407,23 +407,41 @@ function withToken(url) {
   return url + (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(tk);
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Fila: as consultas à brapi saem uma de cada vez, com um pequeno intervalo,
+// para não estourar o limite de consultas por minuto.
+let queueTail = Promise.resolve();
+function queued(fn) {
+  const run = queueTail.then(fn, fn);
+  queueTail = run.catch(() => {}).then(() => sleep(350));
+  return run;
+}
+
 async function getJSON(url) {
-  let res;
-  try {
-    res = await fetch(withToken(url), { cache: 'no-store' });
-  } catch (e) {
-    throw new Error('Sem conexão com a brapi.');
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await queued(() => fetch(withToken(url), { cache: 'no-store' }));
+    } catch (e) {
+      throw new Error('Sem conexão com a brapi.');
+    }
+    // Limite de consultas: espera um pouco e tenta de novo (até 2 vezes).
+    if (res.status === 429 && attempt < 2) {
+      await sleep(1500 * (attempt + 1));
+      continue;
+    }
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* corpo vazio */ }
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) throw new Error('Requer token da brapi');
+      if (res.status === 402) throw new Error('Fora do plano gratuito');
+      if (res.status === 404) throw new Error('Código não encontrado');
+      if (res.status === 429) throw new Error('Limite de consultas atingido; tente daqui a pouco');
+      throw new Error((body && body.message) || ('Erro ' + res.status));
+    }
+    return body;
   }
-  let body = null;
-  try { body = await res.json(); } catch (e) { /* corpo vazio */ }
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) throw new Error('Requer token da brapi');
-    if (res.status === 402) throw new Error('Fora do plano gratuito');
-    if (res.status === 404) throw new Error('Código não encontrado');
-    if (res.status === 429) throw new Error('Limite de consultas atingido');
-    throw new Error((body && body.message) || ('Erro ' + res.status));
-  }
-  return body;
 }
 
 // Aceita os dois formatos da brapi: resultado direto ou dentro de "data".
@@ -433,10 +451,7 @@ function pickResult(body) {
   return r.data ? Object.assign({ symbol: r.symbol }, r.data) : r;
 }
 
-async function fetchQuote(ticker) {
-  const body = await getJSON(API + '/quote/' + encodeURIComponent(ticker));
-  const r = pickResult(body);
-  if (!r || typeof r.regularMarketPrice !== 'number') throw new Error('Sem dados para ' + ticker);
+function toQuote(r) {
   return {
     price: r.regularMarketPrice,
     change: r.regularMarketChange || 0,
@@ -446,7 +461,31 @@ async function fetchQuote(ticker) {
   };
 }
 
+function requireToken(ticker) {
+  if (needsToken(ticker) && !state.settings.token) throw new Error('Requer token da brapi');
+}
+
+async function fetchQuote(ticker) {
+  requireToken(ticker);
+  const body = await getJSON(API + '/quote/' + encodeURIComponent(ticker));
+  const r = pickResult(body);
+  if (!r || typeof r.regularMarketPrice !== 'number') throw new Error('Sem dados para ' + ticker);
+  return toQuote(r);
+}
+
+// Várias ações numa consulta só. Usado sem token, para as 4 ações de teste.
+async function fetchQuotesBatch(tickers) {
+  const body = await getJSON(API + '/quote/' + tickers.map(encodeURIComponent).join(','));
+  const out = {};
+  (body && Array.isArray(body.results) ? body.results : []).forEach((item) => {
+    const r = item && item.data ? Object.assign({ symbol: item.symbol }, item.data) : item;
+    if (r && r.symbol && typeof r.regularMarketPrice === 'number') out[String(r.symbol).toUpperCase()] = toQuote(r);
+  });
+  return out;
+}
+
 async function fetchHistory(ticker, range) {
+  requireToken(ticker);
   const body = await getJSON(API + '/quote/' + encodeURIComponent(ticker) + '?range=' + range + '&interval=1d');
   const r = pickResult(body);
   const hist = (r && (r.historicalDataPrice || [])) || [];
@@ -478,16 +517,35 @@ async function refreshAll() {
   btn.textContent = '… Atualizando';
 
   const tickers = allTickers();
-  await Promise.all([
-    ...tickers.map(async (t) => {
-      try { quotes[t] = await fetchQuote(t); }
-      catch (e) { quotes[t] = Object.assign({}, quotes[t] || {}, { error: e.message }); }
-    }),
-    ...EXTRAS.map(async (x) => {
-      try { extras[x.id] = await fetchExtra(x); }
-      catch (e) { extras[x.id] = { error: e.message }; }
-    })
-  ]);
+  const keepError = (t, msg) => { quotes[t] = Object.assign({}, quotes[t] || {}, { error: msg }); };
+
+  if (!state.settings.token) {
+    // Sem token: só as 4 ações de teste funcionam. Elas vão juntas numa
+    // consulta só, e nada é pedido para o que depende de token.
+    const testOnes = tickers.filter((t) => !needsToken(t));
+    tickers.filter(needsToken).forEach((t) => { quotes[t] = { error: 'Requer token da brapi' }; });
+    EXTRAS.forEach((x) => { extras[x.id] = { error: 'Disponível com token' }; });
+    if (testOnes.length) {
+      try {
+        const got = await fetchQuotesBatch(testOnes);
+        testOnes.forEach((t) => { if (got[t]) quotes[t] = got[t]; else keepError(t, 'Sem dados para ' + t); });
+      } catch (e) {
+        testOnes.forEach((t) => keepError(t, e.message));
+      }
+    }
+  } else {
+    // Com token: uma ação por consulta (regra do plano gratuito), em fila.
+    await Promise.all([
+      ...tickers.map(async (t) => {
+        try { quotes[t] = await fetchQuote(t); }
+        catch (e) { keepError(t, e.message); }
+      }),
+      ...EXTRAS.map(async (x) => {
+        try { extras[x.id] = await fetchExtra(x); }
+        catch (e) { extras[x.id] = { error: e.message }; }
+      })
+    ]);
+  }
   lastUpdate = new Date();
   loading = false;
   btn.disabled = false;
@@ -783,6 +841,7 @@ $('addWatchForm').addEventListener('submit', (e) => {
   $('addWatchInput').value = '';
   saveState(); renderAll();
   if (needsToken(t) && !state.settings.token) toast(t + ' adicionada; ela precisa do token para ter cotação');
+  if (needsToken(t) && !state.settings.token) { quotes[t] = { error: 'Requer token da brapi' }; renderAll(); return; }
   fetchQuote(t).then((q) => { quotes[t] = q; }).catch((err) => { quotes[t] = { error: err.message }; }).then(() => { checkAlerts(); renderAll(); });
 });
 
