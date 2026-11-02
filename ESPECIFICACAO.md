@@ -14,12 +14,12 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 4. **Interface em português do Brasil**, com valores em R$ no formato brasileiro.
 5. **Funcionar sem token** com as 4 ações de teste da brapi (PETR4, VALE3, ITUB4, MGLU3) e mostrar uma mensagem clara quando algo depende do token.
 
-## Versão 1.0.1 (atual)
+## Versão 1.0.2 (atual)
 
 | Área | Comportamento |
 | --- | --- |
 | Mercado | Ibovespa (`^BVSP`) e dólar (`USD-BRL`); lista de ações com preço e variação do dia; incluir e remover ações |
-| Detalhe | Toque numa ação abre preço, variação e gráfico de linha com períodos 5D, 1M, 3M, 6M e 1A |
+| Detalhe | Toque numa ação abre preço, variação, data e hora da última cotação (horário de Brasília) e gráfico de linha com períodos 5D, 1M, 3M, 6M e 1A |
 | Carteira | Posições com código, quantidade e preço médio; valor atual, resultado em R$ e %; resumo total |
 | Alertas | "Sobe acima de" ou "cai abaixo de" um valor; conferidos a cada atualização; disparam aviso, vibração e notificação do navegador, se permitida; podem ser reativados |
 | Ajustes | Token da brapi; atualização automática (desligada, 5, 15 ou 30 min); exportar e importar backup em JSON; apagar dados do aparelho |
@@ -48,5 +48,6 @@ A primeira evolução será escolhida depois de usar a versão 1.0 e servirá de
 
 | Versão | Data | Mudança |
 | --- | --- | --- |
+| 1.0.2 | 02/11/2026 | Tela de detalhe mostra a data e a hora da última cotação |
 | 1.0.1 | 01/11/2026 | Corrige "limite de consultas atingido": menos consultas sem token, fila entre consultas e nova tentativa automática |
 | 1.0 | 01/11/2026 | Primeira versão: mercado, detalhe com gráfico, carteira, alertas, ajustes e backup |

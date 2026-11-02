@@ -189,6 +189,7 @@
         <div class="name" id="dName" style="max-width:none"></div>
         <div class="big-price" id="dPrice">–</div>
         <div class="chg" id="dChg"></div>
+        <div class="muted" id="dTime"></div>
       </div>
       <div class="ranges" id="ranges">
         <button data-range="5d">5D</button>
@@ -281,7 +282,7 @@
         <button class="btn danger" id="resetBtn">Apagar todos os dados deste aparelho</button>
       </div>
     </div>
-    <p class="foot">Monitor de Ações · v1.0.1 · seus dados ficam só neste aparelho</p>
+    <p class="foot">Monitor de Ações · v1.0.2 · seus dados ficam só neste aparelho</p>
   </section>
 </main>
 
@@ -737,6 +738,18 @@ function renderDetailHead() {
   const chg = $('dChg');
   chg.className = 'chg ' + cls(q.pct || 0);
   chg.textContent = typeof q.price === 'number' ? (q.change >= 0 ? '+' : '') + brl.format(q.change) + ' (' + signPct(q.pct) + ') hoje' : (q.error || '');
+  $('dTime').textContent = quoteTimeText(q.time);
+}
+
+// Data e hora da última cotação, no horário de Brasília. Vazio se não houver.
+function quoteTimeText(time) {
+  if (time == null || time === '') return '';
+  const d = new Date(typeof time === 'number' ? time * 1000 : time);
+  if (isNaN(d.getTime())) return '';
+  const opts = { timeZone: 'America/Sao_Paulo' };
+  const dia = d.toLocaleDateString('pt-BR', Object.assign({ day: '2-digit', month: '2-digit', year: 'numeric' }, opts));
+  const hora = d.toLocaleTimeString('pt-BR', Object.assign({ hour: '2-digit', minute: '2-digit' }, opts));
+  return 'Última cotação: ' + dia + ' às ' + hora;
 }
 
 async function openDetail(t) {
