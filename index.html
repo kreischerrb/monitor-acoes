@@ -12,6 +12,20 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Ações">
+<script>
+  // Aplica o tema salvo antes de desenhar a tela, para não piscar branco no escuro.
+  (function () {
+    var t = 'auto';
+    try {
+      var s = JSON.parse(localStorage.getItem('monitorAcoes.v1') || '{}');
+      if (s && s.settings && (s.settings.theme === 'light' || s.settings.theme === 'dark')) t = s.settings.theme;
+    } catch (e) { /* sem acesso ao armazenamento: fica no automático */ }
+    if (t !== 'auto') document.documentElement.setAttribute('data-theme', t);
+    var dark = t === 'dark' || (t === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', dark ? '#0d3a31' : '#0f5c4d');
+  })();
+</script>
 <style>
   :root {
     --bg: #f4f6f5;
@@ -25,7 +39,72 @@
     --down: #c0392b;
     --warn-bg: #fff6e0;
     --warn-ink: #7a5300;
+    --brand-ink: #0f5c4d;
+    --on-brand: #fff;
+    --header-bg: #0f5c4d;
+    --field-bg: #fff;
+    --danger-soft: #fde8e6;
+    --danger-ink: #7d1f15;
+    --danger-line: #f3c2bc;
+    --danger-btn: #fbe4e1;
+    --neutral-soft: #eceff0;
+    --toast-bg: #17201d;
+    --toast-ink: #fff;
     --radius: 14px;
+    color-scheme: light;
+  }
+  /* Tema escuro: vale no automático com o celular escuro, ou quando fixado em Escuro. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1413;
+      --card: #182120;
+      --ink: #e4ebe8;
+      --muted: #9aa9a4;
+      --line: #2a3431;
+      --brand: #1b6f5d;
+      --brand-soft: #1c3530;
+      --up: #4fd08a;
+      --down: #ff7b6e;
+      --warn-bg: #3a2e10;
+      --warn-ink: #f5d58a;
+      --brand-ink: #6fd1b8;
+      --on-brand: #fff;
+      --header-bg: #0d3a31;
+      --field-bg: #111917;
+      --danger-soft: #3d1f1c;
+      --danger-ink: #ffb4aa;
+      --danger-line: #6b2f28;
+      --danger-btn: #3d1f1c;
+      --neutral-soft: #2a3431;
+      --toast-bg: #e4ebe8;
+      --toast-ink: #17201d;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1413;
+    --card: #182120;
+    --ink: #e4ebe8;
+    --muted: #9aa9a4;
+    --line: #2a3431;
+    --brand: #1b6f5d;
+    --brand-soft: #1c3530;
+    --up: #4fd08a;
+    --down: #ff7b6e;
+    --warn-bg: #3a2e10;
+    --warn-ink: #f5d58a;
+    --brand-ink: #6fd1b8;
+    --on-brand: #fff;
+    --header-bg: #0d3a31;
+    --field-bg: #111917;
+    --danger-soft: #3d1f1c;
+    --danger-ink: #ffb4aa;
+    --danger-line: #6b2f28;
+    --danger-btn: #3d1f1c;
+    --neutral-soft: #2a3431;
+    --toast-bg: #e4ebe8;
+    --toast-ink: #17201d;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -39,14 +118,14 @@
   }
   header {
     position: sticky; top: 0; z-index: 5;
-    background: var(--brand); color: #fff;
+    background: var(--header-bg); color: var(--on-brand);
     padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
   header h1 { font-size: 19px; margin: 0; font-weight: 650; }
   header .sub { font-size: 12px; opacity: .85; }
   .icon-btn {
-    background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 10px;
+    background: rgba(255,255,255,.15); color: var(--on-brand); border: 0; border-radius: 10px;
     padding: 8px 12px; font-size: 14px; font-weight: 600; cursor: pointer;
   }
   .icon-btn:disabled { opacity: .5; }
@@ -81,22 +160,22 @@
   }
   .notice b { font-weight: 700; }
   .alert-banner {
-    background: #fde8e6; color: #7d1f15; border: 1px solid #f3c2bc; border-radius: 12px;
+    background: var(--danger-soft); color: var(--danger-ink); border: 1px solid var(--danger-line); border-radius: 12px;
     padding: 10px 14px; font-size: 14px; margin: 10px 0;
   }
   form.inline { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--line); }
   input, select {
     font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px;
-    border: 1px solid var(--line); background: #fff; color: var(--ink); min-width: 0;
+    border: 1px solid var(--line); background: var(--field-bg); color: var(--ink); min-width: 0;
   }
-  input:focus, select:focus { outline: 2px solid var(--brand); outline-offset: 0; }
+  input:focus, select:focus { outline: 2px solid var(--brand-ink); outline-offset: 0; }
   .grow { flex: 1 1 120px; }
   .btn {
     font: inherit; font-size: 15px; font-weight: 650; border: 0; border-radius: 10px;
-    padding: 10px 14px; background: var(--brand); color: #fff; cursor: pointer;
+    padding: 10px 14px; background: var(--brand); color: var(--on-brand); cursor: pointer;
   }
-  .btn.secondary { background: var(--brand-soft); color: var(--brand); }
-  .btn.danger { background: #fbe4e1; color: var(--down); }
+  .btn.secondary { background: var(--brand-soft); color: var(--brand-ink); }
+  .btn.danger { background: var(--danger-btn); color: var(--down); }
   .btn.small { padding: 6px 10px; font-size: 13px; }
   .x {
     border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1;
@@ -121,28 +200,28 @@
     color: var(--muted); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 2px;
   }
   nav.tabs button .ic { font-size: 20px; line-height: 1; }
-  nav.tabs button.active { color: var(--brand); font-weight: 700; }
+  nav.tabs button.active { color: var(--brand-ink); font-weight: 700; }
   /* Detalhe / gráfico */
   .detail-head { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
-  .detail-head .back { border: 0; background: var(--brand-soft); color: var(--brand); border-radius: 10px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+  .detail-head .back { border: 0; background: var(--brand-soft); color: var(--brand-ink); border-radius: 10px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
   .big-price { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .ranges { display: flex; gap: 6px; padding: 0 16px 12px; flex-wrap: wrap; }
   .ranges button {
-    border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px;
+    border: 1px solid var(--line); background: var(--field-bg); color: var(--ink); border-radius: 999px;
     padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
-  .ranges button.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .ranges button.active { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
   .chart { padding: 4px 8px 8px; min-height: 160px; }
   .chart svg { width: 100%; height: auto; display: block; }
   .chart-meta { display: flex; justify-content: space-between; padding: 0 16px 14px; font-size: 13px; color: var(--muted); }
   .empty { padding: 18px 16px; color: var(--muted); font-size: 14px; text-align: center; }
-  .tag { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand); }
-  .tag.off { background: #eceff0; color: var(--muted); }
-  .tag.hit { background: #fde8e6; color: var(--down); }
+  .tag { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-ink); }
+  .tag.off { background: var(--neutral-soft); color: var(--muted); }
+  .tag.hit { background: var(--danger-soft); color: var(--down); }
   .foot { text-align: center; font-size: 12px; color: var(--muted); margin: 18px 0 6px; }
   .toast {
     position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-    background: #17201d; color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px;
+    background: var(--toast-bg); color: var(--toast-ink); padding: 10px 16px; border-radius: 12px; font-size: 14px;
     opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; max-width: 90vw; text-align: center;
   }
   .toast.show { opacity: .95; }
@@ -245,6 +324,18 @@
 
   <!-- AJUSTES -->
   <section class="view" id="view-ajustes">
+    <h2>Aparência</h2>
+    <div class="card">
+      <label class="field">
+        <span>Tema do app. No automático, ele segue o tema do celular.</span>
+        <select id="themeSelect">
+          <option value="auto">Automático</option>
+          <option value="light">Claro</option>
+          <option value="dark">Escuro</option>
+        </select>
+      </label>
+    </div>
+
     <h2>Token da brapi</h2>
     <div class="card">
       <label class="field">
@@ -282,7 +373,7 @@
         <button class="btn danger" id="resetBtn">Apagar todos os dados deste aparelho</button>
       </div>
     </div>
-    <p class="foot">Monitor de Ações · v1.0.2 · seus dados ficam só neste aparelho</p>
+    <p class="foot">Monitor de Ações · v1.1.0 · seus dados ficam só neste aparelho</p>
   </section>
 </main>
 
@@ -312,6 +403,10 @@ const EXTRAS = [
   { id: 'USDBRL', label: 'Dólar (USD/BRL)', kind: 'currency', symbol: 'USD-BRL', unit: 'brl' }
 ];
 
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_NAMES = { auto: 'Automático', light: 'Claro', dark: 'Escuro' };
+const THEME_COLOR = { light: '#0f5c4d', dark: '#0d3a31' }; // cor da barra do navegador e do celular
+
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const num = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const pctFmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -322,7 +417,7 @@ function defaultState() {
     watchlist: TEST_TICKERS.slice(),
     portfolio: [],   // { id, ticker, qty, avg }
     alerts: [],      // { id, ticker, op: 'acima'|'abaixo', value, active, triggeredAt }
-    settings: { token: '', refreshMin: 15 }
+    settings: { token: '', refreshMin: 15, theme: 'auto' } // theme: 'auto' | 'light' | 'dark'
   };
 }
 
@@ -332,11 +427,14 @@ function loadState() {
     if (!raw) return defaultState();
     const s = JSON.parse(raw);
     const d = defaultState();
+    const settings = Object.assign(d.settings, s.settings || {});
+    // Dados de versões anteriores não têm tema: entram no automático.
+    if (!THEMES.includes(settings.theme)) settings.theme = 'auto';
     return {
       watchlist: Array.isArray(s.watchlist) ? s.watchlist : d.watchlist,
       portfolio: Array.isArray(s.portfolio) ? s.portfolio : [],
       alerts: Array.isArray(s.alerts) ? s.alerts : [],
-      settings: Object.assign(d.settings, s.settings || {})
+      settings
     };
   } catch (e) {
     return defaultState();
@@ -348,6 +446,25 @@ let state = loadState();
 function saveState() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { toast('Não foi possível salvar neste navegador.'); }
+}
+
+/* ---------- Tema (claro, escuro ou automático) ---------- */
+const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function applyTheme() {
+  const t = state.settings.theme;
+  const root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.setAttribute('data-theme', t);
+  else root.removeAttribute('data-theme');
+  const dark = t === 'dark' || (t === 'auto' && !!darkQuery && darkQuery.matches);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? THEME_COLOR.dark : THEME_COLOR.light);
+}
+
+// No automático, acompanha a troca de tema do celular com o app aberto.
+if (darkQuery) {
+  if (darkQuery.addEventListener) darkQuery.addEventListener('change', applyTheme);
+  else if (darkQuery.addListener) darkQuery.addListener(applyTheme);
 }
 
 /* ---------- Dados em memória (não salvos) ---------- */
@@ -716,6 +833,7 @@ function renderSettings() {
   $('tokenInput').value = state.settings.token ? '••••••••••' : '';
   $('tokenInput').dataset.masked = state.settings.token ? '1' : '';
   $('refreshSelect').value = String(state.settings.refreshMin || 0);
+  $('themeSelect').value = state.settings.theme;
 }
 
 function renderAll() {
@@ -936,11 +1054,18 @@ $('refreshSelect').addEventListener('change', () => {
   toast(state.settings.refreshMin ? 'Atualização a cada ' + state.settings.refreshMin + ' min' : 'Atualização automática desligada');
 });
 
+$('themeSelect').addEventListener('change', () => {
+  const t = $('themeSelect').value;
+  state.settings.theme = THEMES.includes(t) ? t : 'auto';
+  saveState(); applyTheme();
+  toast('Tema: ' + THEME_NAMES[state.settings.theme]);
+});
+
 $('exportBtn').addEventListener('click', () => {
   const data = {
     app: 'monitor-acoes', version: 1, exportedAt: new Date().toISOString(),
     watchlist: state.watchlist, portfolio: state.portfolio, alerts: state.alerts,
-    settings: { refreshMin: state.settings.refreshMin } // o token NÃO vai para o backup
+    settings: { refreshMin: state.settings.refreshMin, theme: state.settings.theme } // o token NÃO vai para o backup
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -966,7 +1091,9 @@ $('importFile').addEventListener('change', async () => {
     if (!confirm('Substituir a lista, a carteira e os alertas deste aparelho pelos dados do backup?')) return;
     state.watchlist = wl; state.portfolio = pf; state.alerts = al;
     if (d.settings && typeof d.settings.refreshMin === 'number') state.settings.refreshMin = d.settings.refreshMin;
-    saveState(); renderSettings(); scheduleRefresh(); renderAll();
+    // Backup antigo, sem tema: o tema deste aparelho fica como está.
+    if (d.settings && THEMES.includes(d.settings.theme)) state.settings.theme = d.settings.theme;
+    saveState(); applyTheme(); renderSettings(); scheduleRefresh(); renderAll();
     toast('Backup importado');
     refreshAll();
   } catch (e) {
@@ -978,7 +1105,7 @@ $('importFile').addEventListener('change', async () => {
 $('resetBtn').addEventListener('click', () => {
   if (!confirm('Apagar lista, carteira, alertas e token deste aparelho? Exporte um backup antes, se quiser guardar.')) return;
   state = defaultState();
-  saveState(); renderSettings(); scheduleRefresh(); renderAll();
+  saveState(); applyTheme(); renderSettings(); scheduleRefresh(); renderAll();
   toast('Dados apagados');
   refreshAll();
 });
@@ -988,6 +1115,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 /* ---------- Início ---------- */
+applyTheme();
 renderSettings();
 renderAll();
 scheduleRefresh();
