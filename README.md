@@ -11,7 +11,7 @@ App pessoal para celular que acompanha ações da B3, índices e câmbio. Ele ro
 | Mercado | Ibovespa e dólar, lista de ações acompanhadas e gráfico de cada ação (5 dias a 1 ano) |
 | Carteira | Posições com quantidade e preço médio, valor atual e resultado em R$ e % |
 | Alertas | Aviso quando uma ação sobe acima ou cai abaixo de um valor (com o app aberto) |
-| Ajustes | Token da brapi, atualização automática, backup e limpeza dos dados |
+| Ajustes | Tema claro, escuro ou automático, token da brapi, atualização automática, backup e limpeza dos dados |
 
 As cotações vêm da [brapi.dev](https://brapi.dev), com cerca de 15 minutos de atraso. Sem token, só PETR4, VALE3, ITUB4 e MGLU3 funcionam.
 
