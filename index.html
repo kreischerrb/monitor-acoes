@@ -214,6 +214,13 @@
   .chart { padding: 4px 8px 8px; min-height: 160px; }
   .chart svg { width: 100%; height: auto; display: block; }
   .chart-meta { display: flex; justify-content: space-between; padding: 0 16px 14px; font-size: 13px; color: var(--muted); }
+  .chart-type { padding-bottom: 4px; }
+  .chart svg [data-candle] { cursor: pointer; }
+  .candle-info { padding: 0 16px 14px; font-size: 13px; color: var(--muted); }
+  .candle-info:empty { display: none; }
+  .candle-info .ci-date { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+  .candle-info .ci-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+  .candle-info .ci-grid b { color: var(--ink); font-variant-numeric: tabular-nums; }
   .empty { padding: 18px 16px; color: var(--muted); font-size: 14px; text-align: center; }
   .tag { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-ink); }
   .tag.off { background: var(--neutral-soft); color: var(--muted); }
@@ -277,8 +284,13 @@
         <button data-range="6mo">6M</button>
         <button data-range="1y">1A</button>
       </div>
+      <div class="ranges chart-type" id="chartType">
+        <button data-type="linha" aria-pressed="true" class="active">Linha</button>
+        <button data-type="velas" aria-pressed="false">Velas</button>
+      </div>
       <div class="chart" id="chart"><div class="empty">Carregando gráfico…</div></div>
       <div class="chart-meta" id="chartMeta"></div>
+      <div class="candle-info" id="candleInfo"></div>
     </div>
   </section>
 
@@ -373,7 +385,7 @@
         <button class="btn danger" id="resetBtn">Apagar todos os dados deste aparelho</button>
       </div>
     </div>
-    <p class="foot">Monitor de Ações · v1.1.0 · seus dados ficam só neste aparelho</p>
+    <p class="foot">Monitor de Ações · v1.2.0 · seus dados ficam só neste aparelho</p>
   </section>
 </main>
 
@@ -406,6 +418,7 @@ const EXTRAS = [
 const THEMES = ['auto', 'light', 'dark'];
 const THEME_NAMES = { auto: 'Automático', light: 'Claro', dark: 'Escuro' };
 const THEME_COLOR = { light: '#0f5c4d', dark: '#0d3a31' }; // cor da barra do navegador e do celular
+const CHART_TYPES = ['linha', 'velas']; // tipo de gráfico da tela de detalhe
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const num = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
@@ -417,7 +430,7 @@ function defaultState() {
     watchlist: TEST_TICKERS.slice(),
     portfolio: [],   // { id, ticker, qty, avg }
     alerts: [],      // { id, ticker, op: 'acima'|'abaixo', value, active, triggeredAt }
-    settings: { token: '', refreshMin: 15, theme: 'auto' } // theme: 'auto' | 'light' | 'dark'
+    settings: { token: '', refreshMin: 15, theme: 'auto', chartType: 'linha' } // theme: 'auto' | 'light' | 'dark'; chartType: 'linha' | 'velas'
   };
 }
 
@@ -430,6 +443,8 @@ function loadState() {
     const settings = Object.assign(d.settings, s.settings || {});
     // Dados de versões anteriores não têm tema: entram no automático.
     if (!THEMES.includes(settings.theme)) settings.theme = 'auto';
+    // Dados de versões anteriores não têm tipo de gráfico: entram na linha.
+    if (!CHART_TYPES.includes(settings.chartType)) settings.chartType = 'linha';
     return {
       watchlist: Array.isArray(s.watchlist) ? s.watchlist : d.watchlist,
       portfolio: Array.isArray(s.portfolio) ? s.portfolio : [],
@@ -473,7 +488,7 @@ const extras = {};   // id -> { price, pct, error }
 let lastUpdate = null;
 let loading = false;
 let refreshTimer = null;
-let detail = { ticker: null, range: '1mo' };
+let detail = { ticker: null, range: '1mo', hist: null, sel: null }; // hist: último histórico carregado; sel: vela tocada
 
 /* ---------- Utilidades ---------- */
 const $ = (id) => document.getElementById(id);
@@ -609,7 +624,7 @@ async function fetchHistory(ticker, range) {
   const hist = (r && (r.historicalDataPrice || [])) || [];
   return hist
     .filter((p) => p && typeof p.close === 'number' && p.date)
-    .map((p) => ({ t: (typeof p.date === 'number' ? p.date * 1000 : Date.parse(p.date)), close: p.close }))
+    .map((p) => ({ t: (typeof p.date === 'number' ? p.date * 1000 : Date.parse(p.date)), close: p.close, open: p.open, high: p.high, low: p.low }))
     .sort((a, b) => a.t - b.t);
 }
 
@@ -882,11 +897,16 @@ async function loadChart() {
   document.querySelectorAll('#ranges button').forEach((b) => b.classList.toggle('active', b.dataset.range === range));
   $('chart').innerHTML = '<div class="empty">Carregando gráfico…</div>';
   $('chartMeta').innerHTML = '';
+  $('candleInfo').innerHTML = '';
+  detail.hist = null;
+  syncChartTypeButtons();
   try {
     const pts = await fetchHistory(t, range);
     if (detail.ticker !== t || detail.range !== range) return; // usuário mudou no meio
     if (pts.length < 2) throw new Error('Histórico insuficiente para este período');
-    drawChart(pts);
+    detail.hist = { ticker: t, range, pts, candles: buildCandles(pts, range === '6mo' || range === '1y') };
+    detail.sel = null;
+    renderChart();
   } catch (e) {
     if (detail.ticker !== t || detail.range !== range) return;
     const hint = e.message === 'Fora do plano gratuito' ? ' O plano gratuito da brapi limita o histórico; tente um período menor.' : '';
@@ -918,10 +938,141 @@ function drawChart(pts) {
     '<circle cx="' + x(pts.length - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="4" fill="' + color + '"/>' +
     lbl(iMax, vals[iMax], false) + lbl(iMin, vals[iMin], true) +
     '</svg>';
+  drawMeta(pts);
+}
+
+// Faixa "período → variação no período", igual nos dois tipos de gráfico.
+function drawMeta(pts) {
+  const first = pts[0].close, last = pts[pts.length - 1].close;
   const d0 = new Date(pts[0].t), d1 = new Date(pts[pts.length - 1].t);
   const f = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
   const periodPct = ((last - first) / first) * 100;
   $('chartMeta').innerHTML = '<span>' + f(d0) + ' → ' + f(d1) + '</span><span class="' + cls(periodPct) + '">' + signPct(periodPct) + ' no período</span>';
+}
+
+/* ---------- Gráfico de velas ---------- */
+// Data no horário de Brasília, no formato AAAA-MM-DD.
+function spDay(ms) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(ms));
+  const g = (k) => parts.find((p) => p.type === k).value;
+  return g('year') + '-' + g('month') + '-' + g('day');
+}
+function spHour(ms) {
+  const h = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+  return Number(h);
+}
+// Segunda-feira da semana de uma data AAAA-MM-DD.
+function mondayOf(ymd) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+  return dt.toISOString().slice(0, 10);
+}
+function ddmm(ymd, withYear) {
+  const [y, m, d] = ymd.split('-');
+  return d + '/' + m + (withYear ? '/' + y : '');
+}
+
+// Monta as velas: uma por dia ou, se weekly, uma por semana.
+// Dias sem abertura, máxima ou mínima válidas ficam de fora.
+function buildCandles(pts, weekly) {
+  const ok = (v) => typeof v === 'number' && isFinite(v) && v > 0;
+  const days = pts
+    .filter((p) => ok(p.open) && ok(p.high) && ok(p.low) && ok(p.close) && p.high >= p.low)
+    .map((p) => {
+      const day = spDay(p.t);
+      // Garante que o pavio cubra o corpo, mesmo com pequenas diferenças de arredondamento.
+      return { day, week: mondayOf(day), open: p.open, close: p.close,
+        high: Math.max(p.high, p.open, p.close), low: Math.min(p.low, p.open, p.close) };
+    });
+  if (!weekly) return days.map((d) => ({ day: d.day, lastDay: d.day, week: d.week, weekly: false, open: d.open, high: d.high, low: d.low, close: d.close }));
+  const out = [];
+  days.forEach((d) => {
+    const c = out[out.length - 1];
+    if (c && c.week === d.week) {
+      c.high = Math.max(c.high, d.high);
+      c.low = Math.min(c.low, d.low);
+      c.close = d.close;
+      c.lastDay = d.day;
+    } else {
+      out.push({ day: d.day, lastDay: d.day, week: d.week, weekly: true, open: d.open, high: d.high, low: d.low, close: d.close });
+    }
+  });
+  return out;
+}
+
+// A vela ainda não fechou? (dia de hoje antes das 18h, ou semana atual antes de sexta 18h, horário de Brasília)
+function candleIsOpen(c) {
+  const now = Date.now(), today = spDay(now), hour = spHour(now);
+  if (!c.weekly) return c.lastDay === today && hour < 18;
+  if (mondayOf(today) !== c.week) return false;
+  const wd = (new Date(today + 'T12:00:00Z').getUTCDay() + 6) % 7; // 0 = segunda
+  return wd < 4 || (wd === 4 && hour < 18);
+}
+
+function syncChartTypeButtons() {
+  document.querySelectorAll('#chartType button').forEach((b) => {
+    const on = b.dataset.type === state.settings.chartType;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+// Desenha o gráfico escolhido com o histórico já carregado (sem nova consulta).
+function renderChart() {
+  syncChartTypeButtons();
+  const h = detail.hist;
+  if (!h || h.ticker !== detail.ticker || h.range !== detail.range) return;
+  if (state.settings.chartType !== 'velas') {
+    $('candleInfo').innerHTML = '';
+    drawChart(h.pts);
+    return;
+  }
+  if (!h.candles.length) {
+    drawChart(h.pts);
+    $('candleInfo').innerHTML = '<div>Velas indisponíveis neste período; mostrando linha.</div>';
+    return;
+  }
+  if (detail.sel == null || detail.sel >= h.candles.length) detail.sel = h.candles.length - 1;
+  drawCandles(h.candles, detail.sel);
+  drawMeta(h.pts);
+  drawCandleInfo(h.candles[detail.sel]);
+}
+
+function drawCandles(cs, sel) {
+  const W = 600, H = 320, padL = 8, padR = 8, padT = 14, padB = 14;
+  let min = Math.min(...cs.map((c) => c.low)), max = Math.max(...cs.map((c) => c.high));
+  if (min === max) { min -= 1; max += 1; }
+  const slot = (W - padL - padR) / cs.length;
+  const bodyW = Math.max(Math.min(slot * 0.65, 36), 2);
+  const y = (v) => padT + (1 - (v - min) / (max - min)) * (H - padT - padB);
+  const f = (v) => v.toFixed(1);
+  let bg = '', marks = '', hits = '';
+  cs.forEach((c, i) => {
+    const cx = padL + slot * (i + 0.5);
+    const color = c.close >= c.open ? 'var(--up)' : 'var(--down)';
+    const top = y(Math.max(c.open, c.close)), bot = y(Math.min(c.open, c.close));
+    const bh = Math.max(bot - top, 1.5);
+    const on = i === sel;
+    if (on) bg = '<rect x="' + f(padL + slot * i) + '" y="0" width="' + f(slot) + '" height="' + H + '" fill="var(--brand-soft)"/>';
+    marks +=
+      '<line x1="' + f(cx) + '" y1="' + f(y(c.high)) + '" x2="' + f(cx) + '" y2="' + f(y(c.low)) + '" stroke="' + color + '" stroke-width="' + (on ? 3 : 2) + '"/>' +
+      '<rect x="' + f(cx - bodyW / 2) + '" y="' + f(top) + '" width="' + f(bodyW) + '" height="' + f(bh) + '" fill="' + color + '"' +
+      (on ? ' stroke="var(--ink)" stroke-width="1.5"' : '') + '/>';
+    hits += '<rect data-candle="' + i + '" x="' + f(padL + slot * i) + '" y="0" width="' + f(slot) + '" height="' + H + '" fill="transparent"/>';
+  });
+  $('chart').innerHTML =
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Gráfico de velas de ' + esc(detail.ticker) + '">' +
+    bg + marks + hits + '</svg>';
+}
+
+function drawCandleInfo(c) {
+  const label = c.weekly ? 'Semana de ' + ddmm(c.day, false) : ddmm(c.day, true);
+  const item = (k, v) => '<span>' + k + ' <b>' + brl.format(v) + '</b></span>';
+  $('candleInfo').innerHTML =
+    '<div class="ci-date">' + esc(label) + '</div>' +
+    '<div class="ci-grid">' + item('Abertura', c.open) + item('Máxima', c.high) + item('Mínima', c.low) +
+    item(candleIsOpen(c) ? 'Atual' : 'Fechamento', c.close) + '</div>';
 }
 
 /* ---------- Navegação ---------- */
@@ -947,6 +1098,20 @@ $('ranges').addEventListener('click', (e) => {
   if (!b) return;
   detail.range = b.dataset.range;
   loadChart();
+});
+$('chartType').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-type]');
+  if (!b || !CHART_TYPES.includes(b.dataset.type)) return;
+  state.settings.chartType = b.dataset.type;
+  saveState();
+  detail.sel = null;
+  renderChart();
+});
+$('chart').addEventListener('click', (e) => {
+  const r = e.target.closest('[data-candle]');
+  if (!r) return;
+  detail.sel = Number(r.dataset.candle);
+  renderChart();
 });
 
 $('watchlist').addEventListener('click', (e) => {
@@ -1065,7 +1230,7 @@ $('exportBtn').addEventListener('click', () => {
   const data = {
     app: 'monitor-acoes', version: 1, exportedAt: new Date().toISOString(),
     watchlist: state.watchlist, portfolio: state.portfolio, alerts: state.alerts,
-    settings: { refreshMin: state.settings.refreshMin, theme: state.settings.theme } // o token NÃO vai para o backup
+    settings: { refreshMin: state.settings.refreshMin, theme: state.settings.theme, chartType: state.settings.chartType } // o token NÃO vai para o backup
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -1093,6 +1258,8 @@ $('importFile').addEventListener('change', async () => {
     if (d.settings && typeof d.settings.refreshMin === 'number') state.settings.refreshMin = d.settings.refreshMin;
     // Backup antigo, sem tema: o tema deste aparelho fica como está.
     if (d.settings && THEMES.includes(d.settings.theme)) state.settings.theme = d.settings.theme;
+    // Backup antigo, sem tipo de gráfico: a escolha deste aparelho fica como está.
+    if (d.settings && CHART_TYPES.includes(d.settings.chartType)) state.settings.chartType = d.settings.chartType;
     saveState(); applyTheme(); renderSettings(); scheduleRefresh(); renderAll();
     toast('Backup importado');
     refreshAll();
