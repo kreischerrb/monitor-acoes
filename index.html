@@ -224,6 +224,7 @@
   .candle-info .ci-date { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
   .candle-info .ci-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
   .candle-info .ci-grid b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .candle-info .ci-note { margin-top: 8px; font-size: 12px; }
   .empty { padding: 18px 16px; color: var(--muted); font-size: 14px; text-align: center; }
   .tag { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-ink); }
   .tag.off { background: var(--neutral-soft); color: var(--muted); }
@@ -413,11 +414,13 @@
 const API = 'https://brapi.dev/api';
 // Dólar: AwesomeAPI, gratuita e sem token. O token da brapi nunca vai para lá.
 const FX_API = 'https://economia.awesomeapi.com.br/json/last/';
+// Histórico do dólar: fechamento dos últimos N dias úteis, o mais recente primeiro.
+const FX_DAILY_API = 'https://economia.awesomeapi.com.br/json/daily/';
 const STORAGE_KEY = 'monitorAcoes.v1';
 const TEST_TICKERS = ['PETR4', 'VALE3', 'ITUB4', 'MGLU3'];
 const EXTRAS = [
-  { id: 'IBOV', label: 'Ibovespa', kind: 'quote', symbol: '^BVSP', unit: 'pts' },
-  { id: 'USDBRL', label: 'Dólar (USD/BRL)', kind: 'currency', symbol: 'USD-BRL', unit: 'brl' } // vem da AwesomeAPI, funciona sem token
+  { id: 'IBOV', label: 'Ibovespa', name: 'Índice Bovespa', kind: 'quote', symbol: '^BVSP', unit: 'pts' },
+  { id: 'USDBRL', label: 'Dólar (USD/BRL)', name: 'Dólar comercial', kind: 'currency', symbol: 'USD-BRL', unit: 'brl' } // vem da AwesomeAPI, funciona sem token
 ];
 
 const THEMES = ['auto', 'light', 'dark'];
@@ -428,6 +431,16 @@ const CHART_TYPES = ['linha', 'velas']; // tipo de gráfico da tela de detalhe
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const num = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const pctFmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const brl4 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const ptsFmt = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+
+// Formato dos preços na tela de detalhe e o menor degrau da escala, conforme o ativo:
+// ações em R$ (2 casas), Ibovespa em pontos (sem R$) e dólar em R$ com 4 casas.
+const PRICE_FORMATS = {
+  brl: { fmt: (v) => brl.format(v), quantum: 0.01 },
+  pts: { fmt: (v) => ptsFmt.format(v) + ' pts', quantum: 1 },
+  fx: { fmt: (v) => brl4.format(v), quantum: 0.0001 }
+};
 
 /* ---------- Estado salvo no aparelho ---------- */
 function defaultState() {
@@ -496,7 +509,8 @@ let refreshTimer = null;
 // hist: último histórico carregado; sel: vela tocada;
 // win: trecho visível com zoom ({ s, e }) ou null para o período inteiro. Só em memória, nunca salvo.
 // plot: posição da área do gráfico no último desenho (usada para converter o toque em dia/vela).
-let detail = { ticker: null, range: '1mo', hist: null, sel: null, win: null, plot: null };
+// extra: Ibovespa ou dólar (item de EXTRAS) quando o detalhe não é de uma ação; null para ações.
+let detail = { ticker: null, extra: null, range: '1mo', hist: null, sel: null, win: null, plot: null };
 
 /* ---------- Utilidades ---------- */
 const $ = (id) => document.getElementById(id);
@@ -644,7 +658,7 @@ async function fetchHistory(ticker, range) {
 async function fetchExtra(x) {
   if (x.kind === 'quote') {
     const q = await fetchQuote(x.symbol);
-    return { price: q.price, pct: q.pct };
+    return { price: q.price, pct: q.pct, change: q.change, time: q.time };
   }
   return fetchCurrency(x.symbol);
 }
@@ -665,7 +679,40 @@ async function fetchCurrency(pair) {
   const price = c ? parseNum(c.bid) : NaN;
   if (!Number.isFinite(price)) throw new Error('Sem dados de câmbio');
   const pct = parseNum(c.pctChange);
-  return { price, pct: Number.isFinite(pct) ? pct : 0 };
+  const change = parseNum(c.varBid);
+  const ts = Number(c.timestamp);
+  return { price, pct: Number.isFinite(pct) ? pct : 0, change: Number.isFinite(change) ? change : 0, time: Number.isFinite(ts) && ts > 0 ? ts : null };
+}
+
+// Quantos dias úteis pedir à AwesomeAPI em cada período da tela de detalhe.
+const FX_DAYS = { '5d': 5, '1mo': 22, '3mo': 66, '6mo': 130, '1y': 260 };
+
+// Histórico do dólar pela AwesomeAPI (sem token, fora da fila da brapi).
+// Resposta: lista de dias, o mais recente primeiro, com bid (fechamento), high, low e timestamp.
+// A API não informa a abertura: usa-se o fechamento do dia anterior. Por isso pede-se um dia a mais.
+async function fetchFxHistory(pair, range) {
+  const n = (FX_DAYS[range] || 22) + 1;
+  let res;
+  try {
+    res = await fetch(FX_DAILY_API + encodeURIComponent(pair) + '/' + n, { cache: 'no-store' });
+  } catch (e) {
+    throw new Error('Sem conexão com a AwesomeAPI');
+  }
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* corpo vazio */ }
+  if (!res.ok) throw new Error((body && body.message) || ('Erro ' + res.status + ' no câmbio'));
+  if (!Array.isArray(body)) throw new Error('Sem dados de câmbio');
+  // Um ponto por dia (horário de Brasília); se o mesmo dia vier repetido, fica a cotação mais recente.
+  const byDay = new Map();
+  body.forEach((it) => {
+    const t = Number(it && it.timestamp) * 1000, close = parseNum(it && it.bid);
+    if (!(t > 0) || !(close > 0)) return;
+    const day = spDay(t), old = byDay.get(day);
+    if (!old || t > old.t) byDay.set(day, { t, close, high: parseNum(it.high), low: parseNum(it.low) });
+  });
+  const days = Array.from(byDay.values()).sort((a, b) => a.t - b.t);
+  // Abertura = fechamento do dia anterior. O primeiro dia só serve de referência e sai da lista.
+  return days.slice(1).map((p, i) => Object.assign(p, { open: days[i].close }));
 }
 
 // Índices pela brapi precisam de token; o dólar (AwesomeAPI) não.
@@ -797,7 +844,7 @@ function renderIndices() {
     else if (e.error) right = '<div class="err">' + esc(!state.settings.token && extraNeedsToken(x) ? 'Disponível com token' : e.error) + '</div>';
     else right = '<div class="price">' + (x.unit === 'pts' ? num.format(e.price) + ' pts' : brl.format(e.price)) + '</div>' +
       '<div class="chg ' + cls(e.pct) + '">' + signPct(e.pct) + '</div>';
-    return '<div class="row"><div><div class="sym">' + esc(x.label) + '</div></div><div class="right">' + right + '</div></div>';
+    return '<div class="row click" data-extra="' + esc(x.id) + '"><div><div class="sym">' + esc(x.label) + '</div></div><div class="right">' + right + '</div></div>';
   }).join('');
 }
 
@@ -898,7 +945,18 @@ function renderAll() {
 }
 
 /* ---------- Detalhe e gráfico ---------- */
+// Formato de preço do que está aberto no detalhe: 'brl' (ações), 'pts' (Ibovespa) ou 'fx' (dólar).
+function detailUnit() {
+  const x = detail.extra;
+  if (!x) return 'brl';
+  return x.unit === 'pts' ? 'pts' : 'fx';
+}
+function priceFmt(v) { return PRICE_FORMATS[detailUnit()].fmt(v); }
+// Nome curto para leitores de tela.
+function detailLabel() { return detail.extra ? detail.extra.label : detail.ticker; }
+
 function renderDetailHead() {
+  if (detail.extra) { renderExtraHead(detail.extra); return; }
   const t = detail.ticker;
   const q = quotes[t] || {};
   $('dSym').textContent = t;
@@ -921,8 +979,27 @@ function quoteTimeText(time) {
   return 'Última cotação: ' + dia + ' às ' + hora;
 }
 
-async function openDetail(t) {
-  detail.ticker = t;
+// Cabeçalho do Ibovespa ou do dólar, com os dados do card "Índices e câmbio".
+function renderExtraHead(x) {
+  const e = extras[x.id] || {};
+  const ok = typeof e.price === 'number';
+  $('dSym').textContent = x.label;
+  $('dName').textContent = x.name;
+  $('dPrice').textContent = ok ? priceFmt(e.price) : '–';
+  const chg = $('dChg');
+  chg.className = 'chg ' + cls(e.pct || 0);
+  let msg = e.error || '';
+  if (!state.settings.token && extraNeedsToken(x)) msg = 'Requer token da brapi';
+  chg.textContent = ok
+    ? (typeof e.change === 'number' ? ((e.change >= 0 ? '+' : '') + priceFmt(e.change) + ' (' + signPct(e.pct) + ') hoje') : signPct(e.pct) + ' hoje')
+    : msg;
+  $('dTime').textContent = ok ? quoteTimeText(e.time) : '';
+}
+
+// extra: item de EXTRAS para Ibovespa ou dólar; omitido para ações.
+async function openDetail(t, extra) {
+  detail.extra = extra || null;
+  detail.ticker = extra ? extra.symbol : t;
   showView('detalhe');
   renderDetailHead();
   loadChart();
@@ -938,7 +1015,8 @@ async function loadChart() {
   detail.win = null;
   syncChartTypeButtons();
   try {
-    const pts = await fetchHistory(t, range);
+    const x = detail.extra;
+    const pts = x && x.kind === 'currency' ? await fetchFxHistory(x.symbol, range) : await fetchHistory(t, range);
     if (detail.ticker !== t || detail.range !== range) return; // usuário mudou no meio
     if (pts.length < 2) throw new Error('Histórico insuficiente para este período');
     detail.hist = { ticker: t, range, pts, days: pts.map((p) => spDay(p.t)), candles: buildCandles(pts, range === '6mo' || range === '1y') };
@@ -956,16 +1034,18 @@ async function loadChart() {
 // O intervalo entre eles é 1, 2, 2,5 ou 5 × potência de 10 (mínimo de 1 centavo).
 // Devolve { min, max, step, ticks }: min e max já arredondados para os valores da escala.
 // Reaproveitável: o zoom só precisa chamar de novo com o novo mínimo e máximo.
-function priceScale(min, max) {
-  if (!(max > min)) { const d = Math.max(Math.abs(min) * 0.02, 0.05); min -= d; max += d; } // preço parado
-  if (max - min < 0.04) { const c = (min + max) / 2; min = c - 0.02; max = c + 0.02; } // variação de poucos centavos
+// quantum: menor degrau da escala (0,01 para R$; 1 para pontos; 0,0001 para o dólar). Padrão: 1 centavo.
+function priceScale(min, max, quantum) {
+  const q = quantum || 0.01, dec = Math.round(1 / q); // dec: 100 para centavos, 1 para pontos, 10000 para o dólar
+  if (!(max > min)) { const d = Math.max(Math.abs(min) * 0.02, 5 * q); min -= d; max += d; } // preço parado
+  if (max - min < 4 * q) { const c = (min + max) / 2; min = c - 2 * q; max = c + 2 * q; } // variação de poucos degraus
   const base = Math.pow(10, Math.floor(Math.log10((max - min) / 4)));
   let best = null;
   // Vai do intervalo menor para o maior e fica com o primeiro que dá no máximo 5 valores.
   for (const m of [base / 10, base, base * 10]) {
     for (const k of [1, 2, 2.5, 5]) {
       const step = k * m;
-      if (step < 0.01 - 1e-9 || Math.abs(step * 100 - Math.round(step * 100)) > 1e-6) continue; // só centavos inteiros
+      if (step < q - 1e-9 || Math.abs(step * dec - Math.round(step * dec)) > 1e-6) continue; // só degraus inteiros
       const lo = Math.floor(min / step + 1e-9) * step, hi = Math.ceil(max / step - 1e-9) * step;
       const n = Math.round((hi - lo) / step) + 1;
       if (n <= 5) { best = { step, lo, n }; break; }
@@ -977,7 +1057,7 @@ function priceScale(min, max) {
     if (below && best.lo - best.step >= 0) best.lo -= best.step;
     best.n++;
   }
-  const r = (v) => Math.round(v * 100) / 100;
+  const r = (v) => Math.round(v * dec) / dec;
   const ticks = [];
   for (let i = 0; i < best.n; i++) ticks.push(r(best.lo + i * best.step));
   return { min: ticks[0], max: ticks[ticks.length - 1], step: best.step, ticks };
@@ -989,8 +1069,8 @@ const SCALE_FONT = 20; // em unidades do desenho (cerca de 12 px num celular de 
 // minPadL: margem mínima. Com zoom, usa-se a margem do período inteiro, para o gráfico não "tremer" para os lados.
 function chartFrame(min, max, minPadL) {
   const W = 600, H = 320, padR = 8, padT = 16, padB = 16;
-  const sc = priceScale(min, max);
-  const longest = Math.max(...sc.ticks.map((v) => brl.format(v).length));
+  const sc = priceScale(min, max, PRICE_FORMATS[detailUnit()].quantum);
+  const longest = Math.max(...sc.ticks.map((v) => priceFmt(v).length));
   const padL = Math.max(Math.ceil(longest * SCALE_FONT * 0.56) + 14, minPadL || 0);
   const y = (v) => padT + (1 - (v - sc.min) / (sc.max - sc.min)) * (H - padT - padB);
   return { W, H, padL, padR, padT, padB, sc, y };
@@ -1002,7 +1082,7 @@ function drawScale(fr) {
     const yy = fr.y(v).toFixed(1);
     return '<line x1="' + fr.padL + '" y1="' + yy + '" x2="' + (fr.W - fr.padR) + '" y2="' + yy + '" stroke="var(--line)" stroke-width="1.5"/>' +
       '<text x="' + (fr.padL - 8) + '" y="' + yy + '" text-anchor="end" dominant-baseline="middle" font-size="' + SCALE_FONT +
-      '" fill="var(--muted)" style="font-variant-numeric: tabular-nums">' + brl.format(v) + '</text>';
+      '" fill="var(--muted)" style="font-variant-numeric: tabular-nums">' + priceFmt(v) + '</text>';
   }).join('');
 }
 
@@ -1037,12 +1117,12 @@ function drawChart(pts, win) {
   const lbl = (i, v, below) => {
     const tx = Math.min(Math.max(x(i), padL + 50), W - 50);
     const ty = below ? Math.min(y(v) + 16, H - 2) : Math.max(y(v) - 6, 11);
-    return '<text x="' + tx.toFixed(1) + '" y="' + ty.toFixed(1) + '" text-anchor="middle" font-size="13" fill="var(--muted)">' + brl.format(v) + '</text>';
+    return '<text x="' + tx.toFixed(1) + '" y="' + ty.toFixed(1) + '" text-anchor="middle" font-size="13" fill="var(--muted)">' + priceFmt(v) + '</text>';
   };
   const dot = v1 === n - 1
     ? '<circle cx="' + x(n - 1).toFixed(1) + '" cy="' + y(last).toFixed(1) + '" r="4" fill="' + color + '"/>' : '';
   $('chart').innerHTML =
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Gráfico de preço de ' + esc(detail.ticker) + '">' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Gráfico de preço de ' + esc(detailLabel()) + '">' +
     plotClip(fr) + drawScale(fr) +
     '<g clip-path="url(#plotArea)">' +
     '<path d="' + area + '" fill="' + color + '" fill-opacity="0.10"/>' +
@@ -1197,18 +1277,20 @@ function drawCandles(cs, sel, win) {
       (on ? ' stroke="var(--ink)" stroke-width="1.5"' : '') + '/>';
   }
   $('chart').innerHTML =
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Gráfico de velas de ' + esc(detail.ticker) + '">' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Gráfico de velas de ' + esc(detailLabel()) + '">' +
     plotClip(fr) + '<g clip-path="url(#plotArea)">' + bg + '</g>' + drawScale(fr) +
     '<g clip-path="url(#plotArea)">' + marks + '</g></svg>';
 }
 
 function drawCandleInfo(c) {
   const label = c.weekly ? 'Semana de ' + ddmm(c.day, false) : ddmm(c.day, true);
-  const item = (k, v) => '<span>' + k + ' <b>' + brl.format(v) + '</b></span>';
+  const item = (k, v) => '<span>' + k + ' <b>' + priceFmt(v) + '</b></span>';
   $('candleInfo').innerHTML =
     '<div class="ci-date">' + esc(label) + '</div>' +
     '<div class="ci-grid">' + item('Abertura', c.open) + item('Máxima', c.high) + item('Mínima', c.low) +
-    item(candleIsOpen(c) ? 'Atual' : 'Fechamento', c.close) + '</div>';
+    item(candleIsOpen(c) ? 'Atual' : 'Fechamento', c.close) + '</div>' +
+    (detail.extra && detail.extra.kind === 'currency'
+      ? '<div class="ci-note">A AwesomeAPI não informa a abertura do dólar; a abertura de cada dia é o fechamento do dia anterior.</div>' : '');
 }
 
 /* ---------- Navegação ---------- */
@@ -1218,7 +1300,7 @@ function showView(v) {
   document.querySelectorAll('section.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + v));
   const tab = v === 'detalhe' ? 'mercado' : v;
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === tab));
-  if (v !== 'detalhe') detail.ticker = null;
+  if (v !== 'detalhe') { detail.ticker = null; detail.extra = null; }
   window.scrollTo(0, 0);
 }
 
@@ -1351,6 +1433,12 @@ chartEl.addEventListener('pointercancel', (e) => endPointer(e, true)); // ex.: o
 // Proteção extra no iPhone: dois dedos no gráfico nunca ampliam a página inteira.
 chartEl.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 ['gesturestart', 'gesturechange'].forEach((t) => chartEl.addEventListener(t, (e) => e.preventDefault()));
+
+$('indices').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-extra]');
+  const x = row && EXTRAS.find((it) => it.id === row.dataset.extra);
+  if (x) openDetail(null, x);
+});
 
 $('watchlist').addEventListener('click', (e) => {
   const rm = e.target.closest('[data-remove-watch]');
