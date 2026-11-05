@@ -19,4 +19,5 @@
 - Faça mudanças pequenas, uma por vez, em uma branch, e abra um Pull Request para o dono revisar antes do merge.
 - Na descrição do PR, diga em linguagem simples o que mudou, como testar no celular e se algo depende do token.
 - Atualize `ESPECIFICACAO.md` (tabela da versão e histórico) quando o comportamento mudar.
+- A cada nova versão, mude também a constante `APP_VERSION` no `index.html` para o mesmo número. É ela que avisa o app instalado de que há versão nova.
 - Teste no navegador em tamanho de celular (cerca de 390 × 844) antes de abrir o PR. As chamadas à brapi podem ser simuladas.
