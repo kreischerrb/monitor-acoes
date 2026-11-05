@@ -14,11 +14,11 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 4. **Interface em português do Brasil**, com valores em R$ no formato brasileiro.
 5. **Funcionar sem token** com as 4 ações de teste da brapi (PETR4, VALE3, ITUB4, MGLU3) e mostrar uma mensagem clara quando algo depende do token.
 
-## Versão 1.2.0 (atual)
+## Versão 1.2.1 (atual)
 
 | Área | Comportamento |
 | --- | --- |
-| Mercado | Ibovespa (`^BVSP`) e dólar (`USD-BRL`); lista de ações com preço e variação do dia; incluir e remover ações |
+| Mercado | Ibovespa (`^BVSP`, precisa de token) e dólar (`USD-BRL`, funciona com ou sem token); lista de ações com preço e variação do dia; incluir e remover ações |
 | Detalhe | Toque numa ação abre preço, variação, data e hora da última cotação (horário de Brasília) e gráfico com períodos 5D, 1M, 3M, 6M e 1A. Seletor "Linha \| Velas" acima do gráfico (padrão: Linha). Nas velas, cada vela é um dia em 5D, 1M e 3M, e uma semana em 6M e 1A; tocar numa vela mostra a data (ou "Semana de dd/mm"), Abertura, Máxima, Mínima e Fechamento (ou "Atual", se a vela ainda não fechou). Dias sem abertura, máxima ou mínima válidas ficam de fora; sem nenhuma vela válida, o app mostra a linha com um aviso. As velas usam a mesma consulta de histórico da linha |
 | Carteira | Posições com código, quantidade e preço médio; valor atual, resultado em R$ e %; resumo total |
 | Alertas | "Sobe acima de" ou "cai abaixo de" um valor; conferidos a cada atualização; disparam aviso, vibração e notificação do navegador, se permitida; podem ser reativados |
@@ -27,7 +27,8 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 ### Limitações conhecidas
 
 - Os alertas só funcionam com o app aberto.
-- Sem token, índices, dólar e outras ações aparecem como "Disponível com token" ou "Requer token".
+- Sem token, o Ibovespa e as outras ações aparecem como "Disponível com token" ou "Requer token da brapi". O dólar funciona sem token.
+- Com token salvo, se a brapi recusar uma consulta (erro 401 ou 403), o app mostra a mensagem que a própria brapi devolveu.
 - O plano gratuito da brapi limita o histórico; períodos longos podem mostrar "Fora do plano gratuito".
 - Cada aparelho guarda os próprios dados.
 - No app instalado no Android, a tela de abertura usa sempre a cor clara do `manifest.json`, mesmo no tema escuro, porque o manifesto aceita uma cor só.
@@ -35,11 +36,11 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 ## Fonte de dados
 
 - Cotação e histórico: `https://brapi.dev/api/quote/{TICKER}` com `range` e `interval=1d`.
-- Câmbio: `https://brapi.dev/api/v2/currency?currency=USD-BRL`.
-- Token enviado como parâmetro `token=` na consulta, só quando o usuário o cadastrou.
-- Sem token: as ações de teste vão juntas numa consulta só, e nada é consultado para índices, dólar ou outras ações.
+- Câmbio: AwesomeAPI, `https://economia.awesomeapi.com.br/json/last/USD-BRL` (gratuita, sem token). Preço = campo `bid`; variação = campo `pctChange`. O endpoint `/v2/currency` da brapi não responde no plano gratuito, por isso não é usado.
+- Token enviado como parâmetro `token=` na consulta à brapi, só quando o usuário o cadastrou. Ele nunca é enviado à AwesomeAPI.
+- Sem token: as ações de teste vão juntas numa consulta só, o dólar é consultado na AwesomeAPI, e nada é consultado para índices ou outras ações.
 - Com token: uma consulta por ativo, compatível com o plano gratuito.
-- As consultas saem em fila, uma de cada vez. Se a brapi responder "limite de consultas", o app espera e tenta de novo até 2 vezes.
+- As consultas à brapi saem em fila, uma de cada vez. Se a brapi responder "limite de consultas", o app espera e tenta de novo até 2 vezes.
 
 ## Próximas evoluções
 
@@ -49,6 +50,7 @@ A primeira evolução será escolhida depois de usar a versão 1.0 e servirá de
 
 | Versão | Data | Mudança |
 | --- | --- | --- |
+| 1.2.1 | 05/11/2026 | Dólar passa a vir da AwesomeAPI e funciona com ou sem token; com token salvo, recusas da brapi (401/403) mostram a mensagem da própria brapi |
 | 1.2.0 | 04/11/2026 | Gráfico de velas na tela de detalhe, com seletor "Linha \| Velas"; velas semanais em 6M e 1A; toque na vela mostra abertura, máxima, mínima e fechamento |
 | 1.1.0 | 03/11/2026 | Modo escuro: nova seção Aparência em Ajustes (automático, claro ou escuro); o padrão segue o tema do celular |
 | 1.0.2 | 02/11/2026 | Tela de detalhe mostra a data e a hora da última cotação |

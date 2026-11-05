@@ -154,6 +154,7 @@
   .flat { color: var(--muted); }
   .muted { color: var(--muted); font-size: 13px; }
   .err { color: var(--down); font-size: 12.5px; }
+  .right .err { max-width: 58vw; margin-left: auto; overflow-wrap: anywhere; } /* mensagens longas da brapi quebram linha */
   .notice {
     background: var(--warn-bg); color: var(--warn-ink); border-radius: 12px;
     padding: 10px 14px; font-size: 13.5px; margin: 10px 0;
@@ -261,7 +262,7 @@
         <button class="btn" type="submit">Adicionar</button>
       </form>
     </div>
-    <p class="foot">Cotações da brapi.dev com cerca de 15 minutos de atraso.</p>
+    <p class="foot">Ações e Ibovespa da brapi.dev, com cerca de 15 minutos de atraso. Dólar da AwesomeAPI.</p>
   </section>
 
   <!-- DETALHE -->
@@ -385,7 +386,7 @@
         <button class="btn danger" id="resetBtn">Apagar todos os dados deste aparelho</button>
       </div>
     </div>
-    <p class="foot">Monitor de Ações · v1.2.0 · seus dados ficam só neste aparelho</p>
+    <p class="foot">Monitor de Ações · v1.2.1 · seus dados ficam só neste aparelho</p>
   </section>
 </main>
 
@@ -408,11 +409,13 @@
    ========================================================= */
 
 const API = 'https://brapi.dev/api';
+// Dólar: AwesomeAPI, gratuita e sem token. O token da brapi nunca vai para lá.
+const FX_API = 'https://economia.awesomeapi.com.br/json/last/';
 const STORAGE_KEY = 'monitorAcoes.v1';
 const TEST_TICKERS = ['PETR4', 'VALE3', 'ITUB4', 'MGLU3'];
 const EXTRAS = [
   { id: 'IBOV', label: 'Ibovespa', kind: 'quote', symbol: '^BVSP', unit: 'pts' },
-  { id: 'USDBRL', label: 'Dólar (USD/BRL)', kind: 'currency', symbol: 'USD-BRL', unit: 'brl' }
+  { id: 'USDBRL', label: 'Dólar (USD/BRL)', kind: 'currency', symbol: 'USD-BRL', unit: 'brl' } // vem da AwesomeAPI, funciona sem token
 ];
 
 const THEMES = ['auto', 'light', 'dark'];
@@ -567,7 +570,12 @@ async function getJSON(url) {
     let body = null;
     try { body = await res.json(); } catch (e) { /* corpo vazio */ }
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) throw new Error('Requer token da brapi');
+      if (res.status === 401 || res.status === 403) {
+        // Sem token, o motivo é a falta dele. Com token salvo, mostra o
+        // motivo que a própria brapi devolveu (ex.: token inválido, fora do plano).
+        if (!state.settings.token) throw new Error('Requer token da brapi');
+        throw new Error((body && body.message) || ('A brapi recusou a consulta (erro ' + res.status + ')'));
+      }
       if (res.status === 402) throw new Error('Fora do plano gratuito');
       if (res.status === 404) throw new Error('Código não encontrado');
       if (res.status === 429) throw new Error('Limite de consultas atingido; tente daqui a pouco');
@@ -633,12 +641,34 @@ async function fetchExtra(x) {
     const q = await fetchQuote(x.symbol);
     return { price: q.price, pct: q.pct };
   }
-  const body = await getJSON(API + '/v2/currency?currency=' + encodeURIComponent(x.symbol));
-  const c = body && Array.isArray(body.currency) ? body.currency[0] : null;
-  const price = c ? parseNum(c.bidPrice != null ? c.bidPrice : c.regularMarketPrice) : NaN;
-  if (!c || !Number.isFinite(price)) throw new Error('Sem dados de câmbio');
-  const pct = parseNum(c.percentageChange != null ? c.percentageChange : (c.regularMarketChangePercent || 0));
+  return fetchCurrency(x.symbol);
+}
+
+// Câmbio pela AwesomeAPI (sem token). Resposta: { "USDBRL": { bid, pctChange, ... } }.
+// Não usa a fila nem o token da brapi.
+async function fetchCurrency(pair) {
+  let res;
+  try {
+    res = await fetch(FX_API + encodeURIComponent(pair), { cache: 'no-store' });
+  } catch (e) {
+    throw new Error('Sem conexão com a AwesomeAPI.');
+  }
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* corpo vazio */ }
+  if (!res.ok) throw new Error((body && body.message) || ('Erro ' + res.status + ' no câmbio'));
+  const c = body && body[pair.replace('-', '')];
+  const price = c ? parseNum(c.bid) : NaN;
+  if (!Number.isFinite(price)) throw new Error('Sem dados de câmbio');
+  const pct = parseNum(c.pctChange);
   return { price, pct: Number.isFinite(pct) ? pct : 0 };
+}
+
+// Índices pela brapi precisam de token; o dólar (AwesomeAPI) não.
+function extraNeedsToken(x) { return x.kind === 'quote' && needsToken(x.symbol); }
+
+async function loadExtra(x) {
+  try { extras[x.id] = await fetchExtra(x); }
+  catch (e) { extras[x.id] = { error: e.message }; }
 }
 
 /* ---------- Atualização ---------- */
@@ -657,15 +687,19 @@ async function refreshAll() {
     // consulta só, e nada é pedido para o que depende de token.
     const testOnes = tickers.filter((t) => !needsToken(t));
     tickers.filter(needsToken).forEach((t) => { quotes[t] = { error: 'Requer token da brapi' }; });
-    EXTRAS.forEach((x) => { extras[x.id] = { error: 'Disponível com token' }; });
-    if (testOnes.length) {
-      try {
-        const got = await fetchQuotesBatch(testOnes);
-        testOnes.forEach((t) => { if (got[t]) quotes[t] = got[t]; else keepError(t, 'Sem dados para ' + t); });
-      } catch (e) {
-        testOnes.forEach((t) => keepError(t, e.message));
-      }
-    }
+    EXTRAS.filter(extraNeedsToken).forEach((x) => { extras[x.id] = { error: 'Disponível com token' }; });
+    await Promise.all([
+      (async () => {
+        if (!testOnes.length) return;
+        try {
+          const got = await fetchQuotesBatch(testOnes);
+          testOnes.forEach((t) => { if (got[t]) quotes[t] = got[t]; else keepError(t, 'Sem dados para ' + t); });
+        } catch (e) {
+          testOnes.forEach((t) => keepError(t, e.message));
+        }
+      })(),
+      ...EXTRAS.filter((x) => !extraNeedsToken(x)).map(loadExtra)
+    ]);
   } else {
     // Com token: uma ação por consulta (regra do plano gratuito), em fila.
     await Promise.all([
@@ -673,10 +707,7 @@ async function refreshAll() {
         try { quotes[t] = await fetchQuote(t); }
         catch (e) { keepError(t, e.message); }
       }),
-      ...EXTRAS.map(async (x) => {
-        try { extras[x.id] = await fetchExtra(x); }
-        catch (e) { extras[x.id] = { error: e.message }; }
-      })
+      ...EXTRAS.map(loadExtra)
     ]);
   }
   lastUpdate = new Date();
@@ -758,7 +789,7 @@ function renderIndices() {
     const e = extras[x.id];
     let right;
     if (!e) right = '<div class="muted">…</div>';
-    else if (e.error) right = '<div class="err">' + esc(state.settings.token ? e.error : 'Disponível com token') + '</div>';
+    else if (e.error) right = '<div class="err">' + esc(!state.settings.token && extraNeedsToken(x) ? 'Disponível com token' : e.error) + '</div>';
     else right = '<div class="price">' + (x.unit === 'pts' ? num.format(e.price) + ' pts' : brl.format(e.price)) + '</div>' +
       '<div class="chg ' + cls(e.pct) + '">' + signPct(e.pct) + '</div>';
     return '<div class="row"><div><div class="sym">' + esc(x.label) + '</div></div><div class="right">' + right + '</div></div>';
