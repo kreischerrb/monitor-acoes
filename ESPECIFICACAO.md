@@ -14,12 +14,12 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 4. **Interface em português do Brasil**, com valores em R$ no formato brasileiro.
 5. **Funcionar sem token** com as 4 ações de teste da brapi (PETR4, VALE3, ITUB4, MGLU3) e mostrar uma mensagem clara quando algo depende do token.
 
-## Versão 1.3.0 (atual)
+## Versão 1.4.0 (atual)
 
 | Área | Comportamento |
 | --- | --- |
 | Mercado | Ibovespa (`^BVSP`, precisa de token) e dólar (`USD-BRL`, funciona com ou sem token); lista de ações com preço e variação do dia; incluir e remover ações |
-| Detalhe | Toque numa ação abre preço, variação, data e hora da última cotação (horário de Brasília) e gráfico com períodos 5D, 1M, 3M, 6M e 1A. Seletor "Linha \| Velas" acima do gráfico (padrão: Linha). Nas velas, cada vela é um dia em 5D, 1M e 3M, e uma semana em 6M e 1A; tocar numa vela mostra a data (ou "Semana de dd/mm"), Abertura, Máxima, Mínima e Fechamento (ou "Atual", se a vela ainda não fechou). Dias sem abertura, máxima ou mínima válidas ficam de fora; sem nenhuma vela válida, o app mostra a linha com um aviso. As velas usam a mesma consulta de histórico da linha. Os dois gráficos têm uma escala de preços à esquerda, com 4 ou 5 valores redondos em R$ (por exemplo, R$ 30,00 / R$ 31,00) e linhas de grade leves na altura de cada valor; o topo e a base do gráfico coincidem com o primeiro e o último valor da escala |
+| Detalhe | Toque numa ação abre preço, variação, data e hora da última cotação (horário de Brasília) e gráfico com períodos 5D, 1M, 3M, 6M e 1A. Seletor "Linha \| Velas" acima do gráfico (padrão: Linha). Nas velas, cada vela é um dia em 5D, 1M e 3M, e uma semana em 6M e 1A; tocar numa vela mostra a data (ou "Semana de dd/mm"), Abertura, Máxima, Mínima e Fechamento (ou "Atual", se a vela ainda não fechou). Dias sem abertura, máxima ou mínima válidas ficam de fora; sem nenhuma vela válida, o app mostra a linha com um aviso. As velas usam a mesma consulta de histórico da linha. Os dois gráficos têm uma escala de preços à esquerda, com 4 ou 5 valores redondos em R$ (por exemplo, R$ 30,00 / R$ 31,00) e linhas de grade leves na altura de cada valor; o topo e a base do gráfico coincidem com o primeiro e o último valor da escala. Zoom nos dois gráficos: a pinça amplia e reduz só na horizontal (tempo), até no mínimo 5 dias (ou 5 velas) na tela e no máximo o período inteiro; com zoom, arrastar com um dedo desliza para os lados, sem passar das pontas dos dados. A escala de preços e as linhas de grade se ajustam ao trecho visível, e a faixa abaixo do gráfico mostra as datas do trecho e a variação entre o primeiro e o último fechamento visíveis, com o texto "no trecho" no lugar de "no período". A pinça dentro do gráfico não amplia a página; arrastar na vertical continua rolando a página. Nas velas, só um toque rápido seleciona a vela; arrastar ou fazer pinça não seleciona, e a vela selecionada continua mostrando as informações mesmo fora do trecho visível. Trocar o período, o tipo de gráfico ou a ação volta ao período inteiro. O zoom não é salvo |
 | Carteira | Posições com código, quantidade e preço médio; valor atual, resultado em R$ e %; resumo total |
 | Alertas | "Sobe acima de" ou "cai abaixo de" um valor; conferidos a cada atualização; disparam aviso, vibração e notificação do navegador, se permitida; podem ser reativados |
 | Ajustes | Aparência (automático, claro ou escuro; o automático segue o tema do celular, e a escolha entra no backup); a escolha Linha ou Velas da tela de detalhe também fica salva e entra no backup; token da brapi; atualização automática (desligada, 5, 15 ou 30 min); exportar e importar backup em JSON; apagar dados do aparelho |
@@ -31,6 +31,7 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 - Com token salvo, se a brapi recusar uma consulta (erro 401 ou 403), o app mostra a mensagem que a própria brapi devolveu.
 - O plano gratuito da brapi limita o histórico; períodos longos podem mostrar "Fora do plano gratuito".
 - Cada aparelho guarda os próprios dados.
+- No gráfico, um arrasto que começa na diagonal pode ser entendido pelo celular como rolagem da página; nesse caso o gráfico não desliza naquele gesto.
 - No app instalado no Android, a tela de abertura usa sempre a cor clara do `manifest.json`, mesmo no tema escuro, porque o manifesto aceita uma cor só.
 
 ## Fonte de dados
@@ -50,6 +51,7 @@ A primeira evolução será escolhida depois de usar a versão 1.0 e servirá de
 
 | Versão | Data | Mudança |
 | --- | --- | --- |
+| 1.4.0 | 05/11/2026 | Zoom no gráfico da tela de detalhe: pinça amplia e reduz na horizontal, arrastar com um dedo desliza; escala, grade e faixa de datas seguem o trecho visível |
 | 1.3.0 | 05/11/2026 | Escala de preços à esquerda nos gráficos de linha e de velas, com valores redondos em R$ e linhas de grade leves |
 | 1.2.1 | 05/11/2026 | Dólar passa a vir da AwesomeAPI e funciona com ou sem token; com token salvo, recusas da brapi (401/403) mostram a mensagem da própria brapi |
 | 1.2.0 | 04/11/2026 | Gráfico de velas na tela de detalhe, com seletor "Linha \| Velas"; velas semanais em 6M e 1A; toque na vela mostra abertura, máxima, mínima e fechamento |
