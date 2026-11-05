@@ -14,7 +14,7 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 4. **Interface em português do Brasil**, com valores em R$ no formato brasileiro.
 5. **Funcionar sem token** com as 4 ações de teste da brapi (PETR4, VALE3, ITUB4, MGLU3) e mostrar uma mensagem clara quando algo depende do token.
 
-## Versão 1.5.0 (atual)
+## Versão 1.6.0 (atual)
 
 | Área | Comportamento |
 | --- | --- |
@@ -22,7 +22,8 @@ App pessoal para celular, de uso de uma só pessoa, para acompanhar ações da B
 | Detalhe | Toque numa ação, no Ibovespa ou no dólar abre nome, preço, variação do dia, data e hora da última cotação (horário de Brasília) e o mesmo gráfico, com todos os recursos abaixo. Formatos: ações em R$ com 2 casas; Ibovespa em pontos, sem "R$" (ex.: 128.450 pts); dólar em R$ com 4 casas (ex.: R$ 5,4321). O formato vale também para a escala, os rótulos de máxima e mínima e o quadro da vela. O histórico do Ibovespa vem da brapi e precisa de token (sem token, a tela mostra "Requer token da brapi"); o do dólar vem da AwesomeAPI, sem token. A AwesomeAPI não informa a abertura do dia: nas velas do dólar, a abertura de cada dia é o fechamento do dia anterior, e um aviso curto embaixo do gráfico explica isso. Toque numa ação abre preço, variação, data e hora da última cotação (horário de Brasília) e gráfico com períodos 5D, 1M, 3M, 6M e 1A. Seletor "Linha \| Velas" acima do gráfico (padrão: Linha). Nas velas, cada vela é um dia em 5D, 1M e 3M, e uma semana em 6M e 1A; tocar numa vela mostra a data (ou "Semana de dd/mm"), Abertura, Máxima, Mínima e Fechamento (ou "Atual", se a vela ainda não fechou). Dias sem abertura, máxima ou mínima válidas ficam de fora; sem nenhuma vela válida, o app mostra a linha com um aviso. As velas usam a mesma consulta de histórico da linha. Os dois gráficos têm uma escala de preços à esquerda, com 4 ou 5 valores redondos no formato do ativo (por exemplo, R$ 30,00 / R$ 31,00; 126.000 pts / 128.000 pts; R$ 5,4000 / R$ 5,4500) e linhas de grade leves na altura de cada valor; o topo e a base do gráfico coincidem com o primeiro e o último valor da escala. Zoom nos dois gráficos: a pinça amplia e reduz só na horizontal (tempo), até no mínimo 5 dias (ou 5 velas) na tela e no máximo o período inteiro; com zoom, arrastar com um dedo desliza para os lados, sem passar das pontas dos dados. A escala de preços e as linhas de grade se ajustam ao trecho visível, e a faixa abaixo do gráfico mostra as datas do trecho e a variação entre o primeiro e o último fechamento visíveis, com o texto "no trecho" no lugar de "no período". A pinça dentro do gráfico não amplia a página; arrastar na vertical continua rolando a página. Nas velas, só um toque rápido seleciona a vela; arrastar ou fazer pinça não seleciona, e a vela selecionada continua mostrando as informações mesmo fora do trecho visível. Trocar o período, o tipo de gráfico ou a ação volta ao período inteiro. O zoom não é salvo |
 | Carteira | Posições com código, quantidade e preço médio; valor atual, resultado em R$ e %; resumo total |
 | Alertas | "Sobe acima de" ou "cai abaixo de" um valor; conferidos a cada atualização; disparam aviso, vibração e notificação do navegador, se permitida; podem ser reativados |
-| Ajustes | Aparência (automático, claro ou escuro; o automático segue o tema do celular, e a escolha entra no backup); a escolha Linha ou Velas da tela de detalhe também fica salva e entra no backup; token da brapi; atualização automática (desligada, 5, 15 ou 30 min); exportar e importar backup em JSON; apagar dados do aparelho |
+| Ajustes | Aparência (automático, claro ou escuro; o automático segue o tema do celular, e a escolha entra no backup); a escolha Linha ou Velas da tela de detalhe também fica salva e entra no backup; token da brapi; atualização automática (desligada, 5, 15 ou 30 min); exportar e importar backup em JSON; apagar dados do aparelho; seção "Sobre o app" com o número da versão e o botão "Procurar nova versão" |
+| Versão nova | Ao abrir o app e ao voltar para ele (no máximo a cada 10 min), o app lê a página publicada, sem usar a memória do navegador, e compara o número da versão. Se houver versão mais nova, mostra no topo "Nova versão disponível" com o botão "Atualizar", que recarrega a página nova. Não mexe nos dados salvos. O número fica na constante `APP_VERSION` do `index.html` e precisa mudar a cada versão |
 
 ### Limitações conhecidas
 
@@ -53,6 +54,7 @@ A primeira evolução será escolhida depois de usar a versão 1.0 e servirá de
 
 | Versão | Data | Mudança |
 | --- | --- | --- |
+| 1.6.0 | 05/11/2026 | Número da versão em Ajustes (o rodapé mostrava "v1.2.1" fixo) e aviso automático de versão nova, para o app instalado não ficar preso numa versão antiga |
 | 1.5.0 | 05/11/2026 | Ibovespa e dólar ganham tela de detalhe com gráfico de linha e velas, zoom e todos os períodos; Ibovespa em pontos, dólar em R$ com 4 casas; histórico do dólar pela AwesomeAPI, sem token, com abertura igual ao fechamento do dia anterior |
 | 1.4.0 | 05/11/2026 | Zoom no gráfico da tela de detalhe: pinça amplia e reduz na horizontal, arrastar com um dedo desliza; escala, grade e faixa de datas seguem o trecho visível |
 | 1.3.0 | 05/11/2026 | Escala de preços à esquerda nos gráficos de linha e de velas, com valores redondos em R$ e linhas de grade leves |

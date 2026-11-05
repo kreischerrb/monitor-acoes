@@ -160,6 +160,7 @@
     padding: 10px 14px; font-size: 13.5px; margin: 10px 0;
   }
   .notice b { font-weight: 700; }
+  .update-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .alert-banner {
     background: var(--danger-soft); color: var(--danger-ink); border: 1px solid var(--danger-line); border-radius: 12px;
     padding: 10px 14px; font-size: 14px; margin: 10px 0;
@@ -249,6 +250,7 @@
 </header>
 
 <main>
+  <div id="updateBanner"></div>
   <!-- MERCADO -->
   <section class="view active" id="view-mercado">
     <div id="alertBanner"></div>
@@ -389,7 +391,15 @@
         <button class="btn danger" id="resetBtn">Apagar todos os dados deste aparelho</button>
       </div>
     </div>
-    <p class="foot">Monitor de Ações · v1.2.1 · seus dados ficam só neste aparelho</p>
+    <h2>Sobre o app</h2>
+    <div class="card">
+      <div class="pad"><b id="appVersion"></b>
+        <div class="muted">O app confere sozinho se há versão nova ao abrir e ao voltar para ele.</div></div>
+      <div class="btn-row">
+        <button class="btn secondary" id="checkUpdateBtn">Procurar nova versão</button>
+      </div>
+    </div>
+    <p class="foot">Monitor de Ações · seus dados ficam só neste aparelho</p>
   </section>
 </main>
 
@@ -410,6 +420,10 @@
    lista, token) pode ser escrito neste código. Tudo isso fica
    apenas no armazenamento local do navegador (localStorage).
    ========================================================= */
+
+// Versão do app. Mude a cada nova versão, junto com a ESPECIFICACAO.md:
+// é com este número que o app instalado descobre que há versão nova.
+const APP_VERSION = '1.6.0';
 
 const API = 'https://brapi.dev/api';
 // Dólar: AwesomeAPI, gratuita e sem token. O token da brapi nunca vai para lá.
@@ -1605,14 +1619,51 @@ $('resetBtn').addEventListener('click', () => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && lastUpdate && Date.now() - lastUpdate.getTime() > 5 * 60000) refreshAll();
+  if (!document.hidden && Date.now() - lastUpdateCheck > 10 * 60000) checkForUpdate(false);
 });
+
+/* ---------- Versão nova do app ---------- */
+// No Android, o app instalado pode ficar dias aberto em segundo plano e continuar
+// mostrando a versão antiga. Aqui o app baixa a página publicada (sem usar a memória
+// do navegador), lê o número da versão dela e, se for mais nova, mostra um aviso.
+// Não mexe nos dados salvos e não envia nada para fora (só lê a própria página).
+let lastUpdateCheck = 0;
+function isNewer(a, b) { // a é mais nova que b?
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0;
+  }
+  return false;
+}
+async function checkForUpdate(manual) {
+  lastUpdateCheck = Date.now();
+  let remote = null;
+  try {
+    // cache: 'reload' busca na internet e também renova a cópia guardada pelo navegador.
+    const res = await fetch(location.pathname, { cache: 'reload' });
+    const m = res.ok ? (await res.text()).match(/const APP_VERSION = '(\d+(?:\.\d+)*)'/) : null;
+    remote = m ? m[1] : null;
+  } catch (e) { /* sem internet ou página aberta direto do arquivo */ }
+  if (remote && isNewer(remote, APP_VERSION)) {
+    $('updateBanner').innerHTML = '<div class="notice update-banner"><span><b>Nova versão disponível</b> (' + esc(remote) + ')</span>' +
+      '<button class="btn small" id="updateBtn">Atualizar</button></div>';
+    $('updateBtn').onclick = () => { location.replace(location.pathname + '?v=' + encodeURIComponent(remote)); };
+    if (manual) showView('mercado');
+  } else if (manual) {
+    toast(remote ? 'Você já está na versão mais nova (' + APP_VERSION + ')' : 'Não foi possível verificar agora');
+  }
+}
+$('checkUpdateBtn').addEventListener('click', () => checkForUpdate(true));
 
 /* ---------- Início ---------- */
 applyTheme();
+$('appVersion').textContent = 'Versão ' + APP_VERSION;
 renderSettings();
 renderAll();
 scheduleRefresh();
 refreshAll();
+checkForUpdate(false);
 </script>
 </body>
 </html>
