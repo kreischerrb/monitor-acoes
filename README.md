@@ -26,6 +26,16 @@ O código deste repositório é público. Os seus dados nunca entram nele.
 
 Cada aparelho tem os próprios dados. Para guardar uma cópia ou levar os dados para outro aparelho, use **Ajustes → Exportar backup**. O token não entra no backup.
 
+## Sincronizar a lista com o Radar B3
+
+O relatório mensal "Radar B3" traz um botão que abre o app com a lista de ações do mês dentro do próprio link (depois do `#`). Funciona no Chrome e no app instalado.
+
+1. Toque no botão do relatório. O app abre e mostra uma janela com o nome do radar e quais ações **entram**, **saem** e **continuam**. Códigos inválidos, repetidos ou além de 40 aparecem como **ignorados**.
+2. Toque em **Confirmar** para deixar a sua lista igual à do relatório, na mesma ordem. As cotações são atualizadas em seguida.
+3. Ou toque em **Cancelar** para não mudar nada.
+
+Só a lista do Mercado muda. Carteira, alertas e token ficam como estão. Depois de confirmar ou cancelar, o link sai do endereço, então recarregar a página não pede de novo.
+
 ## Instalar no celular
 
 - **Android (Chrome):** abra o endereço do app, toque no menu ⋮ e escolha **Adicionar à tela inicial** (ou **Instalar app**).
