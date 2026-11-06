@@ -237,6 +237,25 @@
     opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; max-width: 90vw; text-align: center;
   }
   .toast.show { opacity: .95; }
+  /* Sincronização pelo link do Radar: janela de confirmação por cima do app */
+  .sync-overlay {
+    position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .45);
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .sync-overlay[hidden] { display: none; }
+  .sync-box {
+    background: var(--card); color: var(--ink); width: 100%; max-width: 640px; max-height: 88vh; overflow-y: auto;
+    border-radius: var(--radius) var(--radius) 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+  .sync-box h3 { margin: 0 0 4px; font-size: 18px; overflow-wrap: anywhere; }
+  .sync-group { margin-top: 14px; }
+  .sync-group h4 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .sync-group .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sync-group .empty-g { font-size: 13px; color: var(--muted); }
+  .sync-box .tag { font-size: 13px; overflow-wrap: anywhere; }
+  .sync-box .tag.out { background: var(--danger-soft); color: var(--down); }
+  .sync-box .note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .sync-box .btn-row { border-top: 0; padding: 18px 0 0; justify-content: flex-end; }
 </style>
 </head>
 <body>
@@ -412,6 +431,19 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Confirmação da sincronização pelo link do Radar (o conteúdo vem do link, nunca do código) -->
+<div class="sync-overlay" id="syncOverlay" hidden>
+  <div class="sync-box" role="dialog" aria-modal="true" aria-labelledby="syncTitle">
+    <h3 id="syncTitle"></h3>
+    <div class="muted">Sua lista do Mercado vai ficar igual à do link, na mesma ordem. Carteira, alertas e token não mudam.</div>
+    <div id="syncBody"></div>
+    <div class="btn-row">
+      <button class="btn secondary" id="syncCancel">Cancelar</button>
+      <button class="btn" id="syncConfirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 
@@ -423,7 +455,7 @@
 
 // Versão do app. Mude a cada nova versão, junto com a ESPECIFICACAO.md:
 // é com este número que o app instalado descobre que há versão nova.
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 const API = 'https://brapi.dev/api';
 // Dólar: AwesomeAPI, gratuita e sem token. O token da brapi nunca vai para lá.
@@ -738,6 +770,14 @@ async function loadExtra(x) {
 }
 
 /* ---------- Atualização ---------- */
+// Atualiza agora ou, se já houver uma atualização em andamento, logo depois dela
+// (para as ações que acabaram de entrar na lista também serem consultadas).
+let refreshPending = false;
+function refreshSoon() {
+  if (loading) refreshPending = true;
+  else refreshAll();
+}
+
 async function refreshAll() {
   if (loading) return;
   loading = true;
@@ -782,6 +822,7 @@ async function refreshAll() {
   btn.textContent = '↻ Atualizar';
   checkAlerts();
   renderAll();
+  if (refreshPending) { refreshPending = false; refreshAll(); }
 }
 
 function scheduleRefresh() {
@@ -1656,6 +1697,113 @@ async function checkForUpdate(manual) {
 }
 $('checkUpdateBtn').addEventListener('click', () => checkForUpdate(true));
 
+/* ---------- Sincronizar a lista pelo link do Radar ---------- */
+// Formato do link: endereço do app + #radar=NOME&ativos=CODIGO1,CODIGO2,...
+// A lista viaja no próprio link (depois do #) e só é aplicada depois da confirmação.
+// Mexe só na lista do Mercado: carteira, alertas, token e ajustes nunca mudam.
+const SYNC_MAX = 40;          // máximo de códigos aceitos de um link
+const SYNC_NAME_MAX = 40;     // tamanho máximo do nome do radar mostrado
+let syncPending = null;       // { name, list, enter, leave, keep, ignored } enquanto a janela está aberta
+
+function clearHash() {
+  // Tira o trecho depois do # sem recarregar, para recarregar a página não repetir a sincronização.
+  try { history.replaceState(null, '', location.pathname + location.search); }
+  catch (e) { location.hash = ''; }
+}
+
+function parseRadarHash() {
+  const h = location.hash.replace(/^#/, '');
+  if (!h) return null;
+  let p;
+  try { p = new URLSearchParams(h); } catch (e) { return null; }
+  if (!p.has('radar') && !p.has('ativos')) return null; // outro # qualquer: não é do Radar
+  let name = String(p.get('radar') || '').replace(/\s+/g, ' ').trim();
+  if (name.length > SYNC_NAME_MAX) name = name.slice(0, SYNC_NAME_MAX) + '…';
+  const list = [], ignored = [];
+  String(p.get('ativos') || '').split(',').forEach((raw) => {
+    const r = raw.trim();
+    if (!r) return; // vírgula sobrando: não é um código
+    const shown = r.length > 16 ? r.slice(0, 16) + '…' : r;
+    const t = cleanTicker(r);
+    if (!t) ignored.push(shown + ' (inválido)');
+    else if (list.includes(t)) ignored.push(t + ' (repetido)');
+    else if (list.length >= SYNC_MAX) ignored.push(t + ' (acima de ' + SYNC_MAX + ')');
+    else list.push(t);
+  });
+  return { name, list, ignored };
+}
+
+function syncGroup(title, items, extraCls) {
+  const body = items.length
+    ? '<div class="tags">' + items.map((t) => '<span class="tag' + (extraCls ? ' ' + extraCls : '') + '">' + esc(t) + '</span>').join('') + '</div>'
+    : '<div class="empty-g">Nenhuma</div>';
+  return '<div class="sync-group"><h4>' + esc(title) + ' (' + items.length + ')</h4>' + body + '</div>';
+}
+
+function handleRadarLink() {
+  const r = parseRadarHash();
+  if (!r) return;
+  clearHash();
+  const title = r.name ? 'Radar ' + r.name : 'Radar';
+  if (!r.list.length) {
+    closeSync();
+    toast('O link do ' + title + ' não tem nenhum código válido. Nada foi alterado.');
+    return;
+  }
+  const cur = state.watchlist;
+  if (cur.length === r.list.length && cur.every((t, i) => t === r.list[i])) {
+    closeSync();
+    toast('Sua lista já está igual ao ' + title);
+    return;
+  }
+  const enter = r.list.filter((t) => !cur.includes(t));
+  const leave = cur.filter((t) => !r.list.includes(t));
+  const keep = r.list.filter((t) => cur.includes(t));
+  syncPending = { list: r.list, enter, leave };
+
+  // Quem sai da lista mas continua na carteira ou nos alertas: só um lembrete.
+  const elsewhere = leave.filter((t) => state.portfolio.some((p) => p.ticker === t) || state.alerts.some((a) => a.ticker === t));
+  const IGN_SHOW = 20;
+  const ign = r.ignored.length > IGN_SHOW ? r.ignored.slice(0, IGN_SHOW).concat('+' + (r.ignored.length - IGN_SHOW)) : r.ignored;
+
+  $('syncTitle').textContent = title;
+  $('syncBody').innerHTML =
+    syncGroup('Entram', enter) +
+    syncGroup('Saem', leave, 'out') +
+    (elsewhere.length ? '<div class="note">' + esc(elsewhere.join(', ')) + (elsewhere.length === 1 ? ' sai' : ' saem') +
+      ' da lista, mas continua' + (elsewhere.length === 1 ? '' : 'm') + ' na carteira ou nos alertas.</div>' : '') +
+    syncGroup('Continuam', keep) +
+    (r.ignored.length ? syncGroup('Ignorados', ign, 'off') : '');
+  $('syncOverlay').hidden = false;
+  $('syncConfirm').focus();
+}
+
+function closeSync() {
+  syncPending = null;
+  $('syncOverlay').hidden = true;
+}
+
+$('syncCancel').addEventListener('click', () => {
+  closeSync();
+  toast('Sincronização cancelada. Nada mudou.');
+});
+
+$('syncConfirm').addEventListener('click', () => {
+  const s = syncPending;
+  if (!s) { closeSync(); return; }
+  closeSync();
+  state.watchlist = s.list.slice(); // exatamente a lista do link, na ordem do link
+  saveState();
+  showView('mercado');
+  renderAll();
+  const n = (k, um, varios) => k + ' ' + (k === 1 ? um : varios);
+  toast('Lista sincronizada: ' + n(s.enter.length, 'entrou', 'entraram') + ', ' + n(s.leave.length, 'saiu', 'saíram'));
+  refreshSoon();
+});
+
+// Com o app já aberto, tocar no link pode só trocar o # sem recarregar a página.
+window.addEventListener('hashchange', handleRadarLink);
+
 /* ---------- Início ---------- */
 applyTheme();
 $('appVersion').textContent = 'Versão ' + APP_VERSION;
@@ -1664,6 +1812,7 @@ renderAll();
 scheduleRefresh();
 refreshAll();
 checkForUpdate(false);
+handleRadarLink();
 </script>
 </body>
 </html>
